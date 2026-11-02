@@ -1,0 +1,14 @@
+name: Check Pawl GPS
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/gps.test.cjs
+      - run: node --check app.js && node --check settings.js && node --check gps.js
