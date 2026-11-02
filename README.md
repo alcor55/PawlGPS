@@ -47,3 +47,8 @@ distinti (incluse parti GSV), non una registrazione completa. L'app mantiene
 il GPS acceso anche a schermo spento e lo rilascia all'uscita.
 
 [Installazione nel fork BangleApps e sviluppo](DEVELOPMENT.md).
+
+## License
+
+Pawl GPS è distribuito con licenza [Apache-2.0](LICENSE).
+Copyright 2026 alcor55 and contributors. Vedi [NOTICE](NOTICE) per le attribuzioni.
