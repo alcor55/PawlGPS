@@ -88,9 +88,21 @@ setTimeout(() => {
     emit('GPGSA,A,3,01,03,14,,,,,,,,,,1.2,0.9,0.8');
     emit('GPTXT,01,01,02,IC=AT6558R');
     check("(function(){var s=require('pawlgps').create(); s.feed('$GPGSV,1,1,01,08,70,010,42');var sat=s.satellites()[0];return sat.id===8 && sat.az===10})()");
-    send('Bangle.uiRedraw()'); screenshot(path.join(root,'screenshots/fix.png'));
+    send("global.verifyText=[]; global.nativeDrawText=g.drawString; g.drawString=function(t){verifyText.push(t);return nativeDrawText.apply(g,arguments)}; Bangle.uiRedraw()");
+    check("verifyText.indexOf('POSITION VALID')>=0 && verifyText.indexOf('VALID (1)')<0");
+    screenshot(path.join(root,'screenshots/fix.png'));
     for(let i=0;i<3;i++) send("Bangle.emit('swipe',-1,0)");
+    check("verifyText.indexOf('Rep:5 Rx:5 Plot:5')>=0");
     screenshot(path.join(root,'screenshots/skyplot.png'));
+    const completeSky=framebuffer();
+    emit('GPGSV,2,1,05,01,65,020,40,03,35,100,32,08,,,25,14,,,20');
+    send('Bangle.uiRedraw()');
+    assert.deepEqual(framebuffer(),completeSky,'An incomplete next cycle must not erase or move the old skyplot');
+    emit('GPGSV,2,2,05,22,,,15');
+    send('Bangle.uiRedraw()');
+    check("verifyText.indexOf('Rep:5 Rx:5 Plot:2')>=0");
+    screenshot(path.join(dir,'pawlgps-two-positions.png'));
+    send("g.drawString=nativeDrawText");
     send("Bangle.emit('swipe',-1,0); Bangle.emit('swipe',-1,0)"); screenshot(path.join(dir,'pawlgps-receiver.png'));
     send("Bangle.emit('swipe',1,0); Bangle.emit('swipe',1,0)");
     for(let i=0;i<5;i++) { send("Bangle.emit('swipe',-1,0); Bangle.emit('swipe',0,-1); Bangle.emit('swipe',0,1)"); }

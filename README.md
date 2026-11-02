@@ -34,7 +34,12 @@ effettivo del GPS, anche se un'altra app lo tiene acceso. Spegnere l'opzione
 non ripristina una precedente configurazione personalizzata.
 
 `--` = dato assente/non trasmesso; `?` = uso del satellite sconosciuto.
-GSV/GSA/DOP scadono dopo 15 s; il fix è segnalato obsoleto dopo 5 s.
+**POSITION VALID** significa posizione valida, non un conteggio di fix.
+**Rep** = satelliti dichiarati nei GSV; **Rx** = satelliti decodificati dagli
+ultimi gruppi completi; **Plot** = quelli con elevazione/azimut validi.
+Lo skyplot conserva l'ultimo gruppo completo mentre arriva il successivo,
+per massimo 15 s dall'ultimo completamento. GSA/DOP scadono dopo 15 s;
+il fix è segnalato obsoleto dopo 5 s. I gruppi incompleti non rinnovano i dati vecchi.
 I valori precedenti possono restare visibili con indicazione STALE/NO FIX.
 GSV è necessario per lo skyplot, GSA per i satelliti usati. Nessuna precisione
 in metri viene dedotta dall'HDOP. Il viewer conserva gli ultimi 32 messaggi

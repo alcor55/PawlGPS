@@ -1,3 +1,4 @@
 0.01: Initial release with GPS diagnostics, NMEA viewer and satellite skyplot.
 0.02: Add Actions page to save shared Waypoints and set system date/time from GPS UTC.
 0.03: Replace waypoint saving with CASIC initial assistance; add validated A-GPS loader cache and automatic replay shared by GPS apps.
+0.04: Keep the last complete GSV snapshot during updates, distinguish reported/received/plottable satellites and clarify GPS position status.

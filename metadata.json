@@ -2,7 +2,7 @@
   "id": "pawlgps",
   "name": "Pawl GPS",
   "shortName": "Pawl GPS",
-  "version": "0.03",
+  "version": "0.04",
   "author": "alcor55",
   "description": "Internal GPS diagnostics, satellite skyplot and raw NMEA viewer",
   "icon": "app-icon.png",

@@ -17,6 +17,19 @@ exports.create = function(now) {
   function prune(map, age) {
     Object.keys(map).forEach(function(k) { if (now()-map[k].at > age) delete map[k]; });
   }
+  function pruneGroups() {
+    var at=now();
+    Object.keys(s.groups).forEach(function(k) {
+      var group=s.groups[k];
+      // Only completion refreshes the displayed snapshot. Repeated first
+      // fragments must not keep an old sky alive indefinitely.
+      if(group.at!==undefined && at-group.at>15000) {
+        delete group.at; delete group.declared; group.sats=[];
+      }
+      if(group.pending && at-group.pending.at>15000) delete group.pending;
+      if(group.at===undefined && !group.pending) delete s.groups[k];
+    });
+  }
   function system(talker, id, sys) {
     if (talker === "GN" && sys) return ({1:"GP",2:"GL",3:"GA",4:"GB",5:"GQ",6:"GI"})[sys] || "GN";
     if (talker === "BD") return "GB";
@@ -42,13 +55,21 @@ exports.create = function(now) {
     // setTime changes Date.now/getTime. Keep data ages unchanged across the jump.
     if(s.fixAt) s.fixAt+=delta;
     s.started+=delta;
-    [s.groups,s.used,s.fields].forEach(function(map) {
+    [s.used,s.fields].forEach(function(map) {
       Object.keys(map).forEach(function(k) { map[k].at+=delta; });
+    });
+    Object.keys(s.groups).forEach(function(k) {
+      var group=s.groups[k];
+      if(group.at!==undefined) group.at+=delta;
+      if(group.pending) group.pending.at+=delta;
     });
     s.raw.forEach(function(r) { r.at+=delta; });
   };
   s.feed = function(line, loss) {
-    if (loss) s.lost++;
+    if (loss) {
+      s.lost++;
+      Object.keys(s.groups).forEach(function(k) { delete s.groups[k].pending; });
+    }
     if (typeof line !== "string") return;
     if (line[0] !== "$" && line[0] !== "!") { s.binary++; return; }
     s.lines++;
@@ -70,25 +91,34 @@ exports.create = function(now) {
     var old = s.raw.filter(function(r) { return r.key === key; })[0];
     if (old) { old.line=line; old.at=at; }
     else { if (s.raw.length >= 32) s.raw.shift(); s.raw.push({key:key,line:line,at:at}); }
-    prune(s.groups,15000); prune(s.used,15000);
+    pruneGroups(); prune(s.used,15000);
     if (type === "GSV") {
-      var total=number(a[1]), part=number(a[2]);
-      if (!total || total>16 || !part || part>total) return;
+      var total=number(a[1]), part=number(a[2]), declared=number(a[3]);
+      if (!total || total>16 || !part || part>total || total%1 || part%1 ||
+        declared===undefined || declared<0 || declared>64 || declared%1) return;
       var signal=(a.length-4)%4 === 1 ? a[a.length-1] : "";
       var gkey=talker+":"+signal, group=s.groups[gkey];
       if (part === 1) {
         if (!group && Object.keys(s.groups).length >= 12) return;
-        group=s.groups[gkey]={at:at,next:1,total:total,sats:[],complete:false};
+        if(!group) group=s.groups[gkey]={talker:talker,sats:[]};
+        group.pending={at:at,next:1,total:total,declared:declared,sats:[]};
       }
-      if (!group || part!==group.next || total!==group.total) return;
-      group.at=at; group.next++;
+      if(!group || !group.pending) return;
+      var pending=group.pending;
+      if(part!==pending.next || total!==pending.total || declared!==pending.declared) {
+        delete group.pending; return;
+      }
+      pending.at=at; pending.next++;
       for (i=4;i+3<a.length;i+=4) {
         var id=number(a[i]);
-        if (!id || group.sats.length >= 64) continue;
-        group.sats.push({key:satKey(talker,id),id:id,talker:talker,
+        if (!id || pending.sats.length >= 64) continue;
+        pending.sats.push({key:satKey(talker,id),id:id,talker:talker,
           el:number(a[i+1]),az:number(a[i+2]),snr:number(a[i+3]),signal:signal});
       }
-      group.complete=part===total;
+      if(part===total) {
+        group.sats=pending.sats; group.declared=declared; group.at=at;
+        delete group.pending;
+      }
     } else if (type === "GSA") {
       var ukey=talker+":"+(a[18] || ""), ids=[];
       for(i=3;i<=14;i++) if (number(a[i])) ids.push(satKey(talker,number(a[i]),number(a[18])));
@@ -111,12 +141,12 @@ exports.create = function(now) {
   };
   s.value = function(k) { var f=s.fields[k]; return f && now()-f.at<=15000 ? f.value : undefined; };
   s.satellites = function() {
-    prune(s.groups,15000); prune(s.used,15000);
+    pruneGroups(); prune(s.used,15000);
     var result={}, used=[];
     Object.keys(s.used).forEach(function(k) { used=used.concat(s.used[k].ids); });
     Object.keys(s.groups).forEach(function(k) {
       var group=s.groups[k];
-      if (!group.complete) return;
+      if (group.at===undefined) return;
       group.sats.forEach(function(sat) {
         var old=result[sat.key];
         if (!old || (sat.snr === undefined ? -1 : sat.snr) > (old.snr === undefined ? -1 : old.snr)) result[sat.key]=sat;
@@ -127,6 +157,31 @@ exports.create = function(now) {
       sat.usedKnown=Object.keys(s.used).some(function(u) { return s.used[u].system===sat.key.substr(0,2) || s.used[u].system==="GN"; });
       return sat;
     });
+  };
+  s.hasPosition=function(sat) {
+    return typeof sat.el==="number" && sat.el>=0 && sat.el<=90 &&
+      typeof sat.az==="number" && sat.az>=0 && sat.az<=360;
+  };
+  s.satelliteStats=function(sats) {
+    pruneGroups();
+    sats=sats || s.satellites();
+    var reported={}, updating=0;
+    Object.keys(s.groups).forEach(function(k) {
+      var group=s.groups[k], count=group.pending?group.pending.declared:group.declared;
+      if(group.pending) updating++;
+      if(count===undefined) return;
+      var talker=system(group.talker,0);
+      // Different signal IDs for one constellation announce the same total.
+      reported[talker]=Math.max(reported[talker]||0,count);
+    });
+    var keys=Object.keys(reported), declared;
+    if(keys.length) {
+      declared=0;
+      keys.forEach(function(k) { if(k!=="GN") declared+=reported[k]; });
+      // GN is a combined total; do not add it again to individual systems.
+      declared=Math.max(declared,reported.GN||0);
+    }
+    return {reported:declared,received:sats.length,positioned:sats.filter(s.hasPosition).length,updating:updating};
   };
   return s;
 };

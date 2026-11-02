@@ -23,7 +23,7 @@ GitHub Pages deve pubblicare `master` da `/ (root)` e includere i submodule
 dai metadata. Attendi il completamento della pubblicazione Pages, poi apri
 [il tuo App Loader](https://alcor55.github.io/BangleApps/), ricarica con
 Cmd+Shift+R, collega il Bangle.js 2 da Chrome/Edge con Web Bluetooth,
-cerca **Pawl GPS 0.03** e premi Upload, poi riavvia l’orologio per attivare
+cerca **Pawl GPS 0.04** e premi Upload, poi riavvia l’orologio per attivare
 il servizio di assistenza per tutte le app. Scollega altri client Bluetooth
 prima di connetterti; prova all'aperto per ricevere i satelliti.
 
@@ -47,12 +47,31 @@ all'altro repository: il normale GITHUB_TOKEN del progetto non basta.
 node --test tests/*.test.cjs
 ```
 
-Il decoder mantiene al massimo 12 gruppi GSV (64 record ciascuno), 12 gruppi
+Il decoder mantiene al massimo 12 gruppi GSV (64 record per snapshot e altri
+64 per aggiornamento in corso in ciascun gruppo), 12 gruppi
 GSA, 128 satelliti visualizzati, 32 messaggi NMEA da 240 caratteri e 10 TXT.
 Il decoder interpreta GGA/GSA/GSV/RMC/VTG/GST/TXT; gli altri messaggi ricevuti
 rimangono nel viewer NMEA. Per segnali multipli mostra il C/N0 maggiore per
 satellite. Le costellazioni dipendono dalla configurazione e dal chip montato,
 non vengono attivate costellazioni o protocolli binari aggiuntivi.
+
+Il gruppo GSV pubblicato viene sostituito solo dopo la ricezione di tutte le
+parti consecutive, con totale parti e satelliti dichiarati coerenti. La prima
+parte di un nuovo ciclo non cancella il precedente; parti fuori ordine o
+segnalazioni di perdita scartano solo il candidato. Un report completo con zero
+satelliti cancella immediatamente il gruppo precedente. La scadenza del gruppo
+pubblicato è 15 s dal completamento: ripetere solo la prima parte non lo rinnova.
+Il cambio dell'ora sposta sia i timestamp dei gruppi pubblicati sia quelli in corso.
+
+`GSV reported`/`Rep` usa il massimo dichiarato tra segnali della stessa
+costellazione; un totale combinato GN non viene sommato nuovamente ai sistemi
+singoli (si usa il massimo tra GN e somma dei singoli). `GSV received`/`Rx`
+conta i satelliti unici negli snapshot completi; `Sky positions`/`Plot` conta
+quelli con coordinate disegnabili. Il ricevitore può dichiarare più satelliti
+di quelli decodificati, o fornire C/N0 senza elevazione/azimut. Durante un ciclo
+incompleto Rep può riferirsi al nuovo annuncio, mentre Rx e Plot conservano
+l'ultimo insieme completo. `GSV updating` in Receiver conta i gruppi in corso.
+Questi contatori descrivono i messaggi ricevuti, non i satelliti usati nel fix.
 
 Per lo smoke test nel firmware ufficiale, scarica in una cartella temporanea
 `emulator_banglejs2.js`, `emu_banglejs2.js` e `common.js` da

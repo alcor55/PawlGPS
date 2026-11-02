@@ -25,10 +25,73 @@ test('multipart skyplot never mixes cycles and expires satellites',()=>{
   assert.equal(s.satellites()[1].snr,undefined);
   s.feed(nmea('GPGSA,A,3,01,03,,,,,,,,,,,1.2,0.8,0.9'));
   assert.equal(s.satellites()[0].used,true);
-  s.feed(first); assert.equal(s.satellites().length,0);
-  s.feed(nmea('GPGSV,2,2,01,06,10,015,10'));
+  s.feed(first); assert.equal(s.satellites().length,5);
+  s.feed(nmea('GPGSV,2,2,05,06,10,015,10'));
   assert.equal(s.satellites().length,5);
+  assert.equal(s.satellites().some(sat=>sat.key==='GP5'),false);
+  assert.equal(s.satellites().some(sat=>sat.key==='GP6'),true);
   time+=16000; assert.equal(s.satellites().length,0);
+});
+test('incomplete updates retain the snapshot but cannot extend its lifetime',()=>{
+  let time=1000;const s=create(()=>time);
+  s.feed(nmea('GPGSV,1,1,02,01,50,010,35,02,30,090,25'));
+  assert.deepEqual(s.satelliteStats(),{reported:2,received:2,positioned:2,updating:0});
+  for(let i=0;i<5;i++) {
+    time+=3000;
+    s.feed(nmea('GPGSV,2,1,05,03,40,180,30,04,,,20,05,,,18,06,,,15'));
+    assert.equal(s.satellites().length,2);
+    assert.deepEqual(s.satelliteStats(),{reported:5,received:2,positioned:2,updating:1});
+  }
+  time++;
+  assert.equal(s.satellites().length,0);
+  assert.deepEqual(s.satelliteStats(),{reported:5,received:0,positioned:0,updating:1});
+  time+=15000;
+  assert.deepEqual(s.satelliteStats(),{reported:undefined,received:0,positioned:0,updating:0});
+});
+test('bad order, inconsistent headers and data loss discard only the candidate update',()=>{
+  const s=create();
+  s.feed(nmea('GPGSV,1,1,01,01,50,010,35'));
+  const first=nmea('GPGSV,3,1,09,02,40,180,30,03,,,20,04,,,18,05,,,15');
+  s.feed(first);s.feed(nmea('GPGSV,3,3,09,10,20,180,25'));
+  assert.deepEqual(s.satellites().map(x=>x.key),['GP1']);
+  assert.equal(s.satelliteStats().updating,0);
+  s.feed(first);s.feed(nmea('GPGSV,3,2,08,06,20,180,25'));
+  assert.deepEqual(s.satellites().map(x=>x.key),['GP1']);
+  s.feed(first);s.feed(nmea('GPGSV,3,2,09,06,20,180,25'),true);
+  assert.deepEqual(s.satellites().map(x=>x.key),['GP1']);
+  assert.equal(s.satelliteStats().updating,0);
+  assert.equal(s.lost,1);
+});
+test('a complete zero-satellite report clears the old constellation immediately',()=>{
+  const s=create();
+  s.feed(nmea('GPGSV,1,1,01,01,50,010,35'));
+  s.feed(nmea('GPGSV,1,1,00'));
+  assert.deepEqual(s.satelliteStats(),{reported:0,received:0,positioned:0,updating:0});
+});
+test('reported, decoded and plottable counts differ when coordinates are missing',()=>{
+  const s=create();
+  s.feed(nmea('GPGSV,2,1,06,01,50,010,35,02,30,090,25,03,,,20,04,,,18'));
+  s.feed(nmea('GPGSV,2,2,06,05,,,15'));
+  assert.deepEqual(s.satelliteStats(),{reported:6,received:5,positioned:2,updating:0});
+  assert.equal(s.hasPosition({el:0,az:0}),true);
+  for(const sat of [{el:NaN,az:1},{el:10,az:undefined},{el:91,az:10},{el:10,az:-1}]) assert.equal(s.hasPosition(sat),false);
+});
+test('reported counts do not double count signal IDs or combined GN reports',()=>{
+  const s=create();
+  s.feed(nmea('GPGSV,1,1,01,01,50,010,35,1'));
+  s.feed(nmea('GPGSV,1,1,01,01,50,010,38,2'));
+  s.feed(nmea('GLGSV,1,1,01,65,30,090,25'));
+  s.feed(nmea('GNGSV,1,1,02,01,50,010,35,65,30,090,25'));
+  assert.deepEqual(s.satelliteStats(),{reported:2,received:2,positioned:2,updating:0});
+});
+test('clock correction preserves ages of both the complete and pending groups',()=>{
+  let time=1000;const s=create(()=>time);
+  s.feed(nmea('GPGSV,1,1,01,01,50,010,35'));
+  time+=2000;s.feed(nmea('GPGSV,2,1,05,02,40,180,30,03,,,20,04,,,18,05,,,15'));
+  for(const delta of [100000000000,-200000000000]) {time+=delta;s.shiftTime(delta);assert.equal(s.satellites().length,1);}
+  s.feed(nmea('GPGSV,2,2,05,06,20,180,25'));
+  assert.deepEqual(s.satelliteStats(),{reported:5,received:5,positioned:2,updating:0});
+  time+=15001;assert.equal(s.satellites().length,0);
 });
 test('constellation IDs, NMEA 4 signal suffix and system-specific GSA',()=>{
   const s=create();
