@@ -2,6 +2,7 @@
   var storage=require("Storage"), settings=storage.readJSON("pawlgps.json",1)||{};
   var refresh=[1,2,5].indexOf(settings.refresh)>=0 ? settings.refresh : 1;
   var state=require("pawlgps").create(), actions=require("pawlgpsact");
+  var assistance=require("pawlgpsrun").install();
   var page=0, offset=0, timer, configTimer, removed=false, lastTouch=0, feedback="";
   var titles=["Fix","Navigation","Accuracy","Skyplot","Satellites","Receiver","NMEA","GPS fields","Actions"];
   var start=Date.now();
@@ -43,13 +44,16 @@
     if(!sats.length) g.setColor(g.theme.fg).setFontAlign(0,0).drawString("Waiting for GSV",cx,cy);
   }
   function actionButtons(r) {
-    var h=Math.min(32,Math.floor((r.h-72)/2)), top=r.y+32;
-    return [{x:r.x+5,y:top,x2:r.x2-5,y2:top+h,label:"Save fix"},
+    var h=Math.min(28,Math.floor((r.h-92)/2)), top=r.y+54;
+    return [{x:r.x+5,y:top,x2:r.x2-5,y2:top+h,label:"Save GPS aid"},
       {x:r.x+5,y:top+h+7,x2:r.x2-5,y2:top+2*h+7,label:"Set GPS time"}];
   }
   function drawActions(r) {
-    var now=Date.now(), ready=actions.validFix(state,now);
-    g.setFont("6x8").setFontAlign(0,-1).drawString(ready?"Fresh GPS fix":"Waiting for valid fix",(r.x+r.x2)/2,r.y+20);
+    var now=Date.now(), ready=actions.validTime(state,now), status=assistance.status();
+    g.setFont("6x8").setFontAlign(0,-1)
+      .drawString("Initial aid: "+status.seed,(r.x+r.x2)/2,r.y+20)
+      .drawString("A-GPS: "+status.cache+(status.cache==="valid"?" ("+status.satellites+")":""),(r.x+r.x2)/2,r.y+30)
+      .drawString("Last: "+status.last.state,(r.x+r.x2)/2,r.y+40);
     actionButtons(r).forEach(function(b,i) {
       var active=i===0?ready:actions.validTime(state,now);
       g.setColor(active?g.theme.fg:g.theme.fg2).drawRect(b.x,b.y,b.x2,b.y2)
@@ -66,7 +70,10 @@
     buttons.forEach(function(b,i) { if(e.x>=b.x && e.x<=b.x2 && e.y>=b.y && e.y<=b.y2) selected=i; });
     if(selected<0) return;
     try {
-      if(selected===0) feedback="Saved "+actions.saveFix(state,now,require("waypoints"));
+      if(selected===0) {
+        actions.saveAid(state,now,storage);
+        feedback="Initial GPS aid saved";
+      }
       else {
         actions.syncTime(state,now,setTime);
         var delta=Date.now()-now;
@@ -75,7 +82,7 @@
       }
     } catch(error) {
       feedback=!actions.validFix(state,Date.now())?"Need a fresh GPS fix":
-        selected===1?"GPS UTC not available":"Save failed; check Waypoints";
+        selected===1?"GPS UTC not available":"Need UTC or storage error";
     }
     lastTouch=Date.now();
     draw();
@@ -108,8 +115,11 @@
       sats.forEach(function(sat) { items.push([sat.key+" "+fmt(sat.el,0)+" "+fmt(sat.az,0)+" "+fmt(sat.snr,0),sat.used?"*":sat.usedKnown?"-":"?"]); });
       if(!sats.length) items.push(["Waiting for GSV",""]);
     } else if(page===5) {
+      var aidStatus=assistance.status();
       items=[["NMEA lines",state.lines],["Bad checksum",state.bad],["Loss events",state.lost],
-        ["Binary packets",state.binary],["GSV satellites",sats.length],["GPS data age",age(state.fixAt)]];
+        ["Binary packets",state.binary],["GSV satellites",sats.length],["GPS data age",age(state.fixAt)],
+        ["Initial aid",aidStatus.seed],["A-GPS cache",aidStatus.cache],["A-GPS satellites",aidStatus.satellites],
+        ["Aid operation",aidStatus.last.state],["Operation age",age(aidStatus.last.at)]];
       state.info.forEach(function(info) { items=items.concat(wrap(info,27)); });
     } else if(page===6) {
       state.raw.forEach(function(raw) { items.push([raw.key,age(raw.at)]); items=items.concat(wrap(raw.line,27)); });

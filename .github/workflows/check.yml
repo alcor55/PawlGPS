@@ -11,4 +11,4 @@ jobs:
         with:
           node-version: '22'
       - run: node --test tests/*.test.cjs
-      - run: node --check app.js && node --check settings.js && node --check gps.js && node --check actions.js
+      - run: node --check app.js && node --check settings.js && node --check gps.js && node --check actions.js && node --check assist.js && node --check runtime.js && node --check interface-client.js

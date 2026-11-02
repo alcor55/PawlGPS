@@ -70,8 +70,11 @@ setTimeout(() => {
     console.log('Firmware:', value('process.version'));
     const metadata = JSON.parse(fs.readFileSync(path.join(root, 'metadata.json'), 'utf8'));
     for (const file of metadata.storage.filter(f => !f.evaluate)) upload(file.name, fs.readFileSync(path.join(root, file.url), 'utf8'));
-    const appsDir=process.env.BANGLEAPPS_DIR || path.join(root,'..','BangleApps');
-    upload('waypoints',fs.readFileSync(path.join(appsDir,'apps/waypoints/lib.js'),'utf8'));
+    const fixture=require('./aid-fixture.cjs');
+    upload('pawlgps.test',Buffer.from(fixture.raw(),'latin1').toString('base64'));
+    check(`require('pawlgpsaid').select(atob(require('Storage').read('pawlgps.test')),${fixture.now}).satellites===8`);
+    check(`require('pawlgpsaid').initial({lat:45,lon:9,at:${fixture.now}},${fixture.now}).length===66`);
+    check("require('pawlgpsaid').crc32('123456789')===3421780262");
     send("global.calls=[]; global.nativePower=Bangle.setGPSPower; Bangle.setGPSPower=function(on,id){calls.push([on,id]); return nativePower.call(Bangle,on,id)}; global.baseline=global['\\xff'].timers.filter(t=>t).length");
     send("global.realDateNow=Date.now; global.actionNow=Date.now(); Date.now=function(){return actionNow}; Bangle.setGPSPower(1,'other'); eval(require('Storage').read('pawlgps.app.js')); Bangle.setLocked(false)");
     send("Bangle.emit('GPS',{fix:1,lat:45.4642,lon:9.19,alt:122.4,speed:3.6,course:135,time:new Date('2026-11-02T12:34:56Z'),satellites:5,hdop:0.9})");
@@ -92,29 +95,17 @@ setTimeout(() => {
     send("Bangle.emit('swipe',1,0); Bangle.emit('swipe',1,0)");
     for(let i=0;i<5;i++) { send("Bangle.emit('swipe',-1,0); Bangle.emit('swipe',0,-1); Bangle.emit('swipe',0,1)"); }
     screenshot(path.join(root,'screenshots/actions.png'));
-    // Use the actual shared Waypoints module to verify interoperability.
-    // jsIdle reanchors the emulator RTC to host time. Model persistent clock
-    // jumps via Date.now to test the app without creating an interval storm.
-    send("require('Storage').writeJSON('waypoints.json',[{name:'NONE'},{name:'Home',lat:1,lon:2}]); global.realSync=require('pawlgpsact').syncTime; global.clockArgs=[]; require('pawlgpsact').syncTime=function(state,now){return realSync(state,now,function(t){clockArgs.push(t);actionNow=t*1000})}; global.savedDrawString=g.drawString; global.text=[]; g.drawString=function(t){text.push(t);if(text.length>100)text.shift();return savedDrawString.apply(g,arguments)}");
-    send("Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
-    check("require('waypoints').load()[2].name==='PG001' && require('waypoints').load()[1].name==='Home'");
-    // An immediate second tap must not create another waypoint.
-    send("Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
-    check("require('waypoints').load().length===3");
-    send("actionNow+=1000; global.beforeGPSSet=Date.now(); Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+90})");
-    check("clockArgs.length===1 && text.indexOf('GPS date/time applied')>=0 && text.indexOf('Fresh GPS fix')>=0");
+    // Model persistent RTC jumps (jsIdle reanchors native emulator time).
+    send("require('Storage').writeJSON('waypoints.json',[{name:'Home',lat:1,lon:2}]); global.realSync=require('pawlgpsact').syncTime; global.clockArgs=[]; require('pawlgpsact').syncTime=function(state,now){return realSync(state,now,function(t){clockArgs.push(t);actionNow=t*1000})}; global.savedDrawString=g.drawString; global.text=[]; g.drawString=function(t){text.push(t);if(text.length>100)text.shift();return savedDrawString.apply(g,arguments)}");
+    send("Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+65})");
+    check("require('Storage').readJSON('pawlgps.aid.json').source==='gps' && require('Storage').readJSON('waypoints.json')[0].name==='Home'");
+    check("text.indexOf('Initial GPS aid saved')>=0");
+    send("actionNow+=1000; Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+100})");
+    check("clockArgs.length===1 && text.indexOf('GPS date/time applied')>=0");
     check("Math.abs(Date.now()-Date.parse('2026-11-02T12:34:57Z'))<1000");
-    send("actionNow+=1000; Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
-    check("require('waypoints').load()[3].name==='PG002'");
-    // Stale fixes, lock and malformed shared storage must never write a point.
-    send("actionNow+=10000; global.beforeStaleTouch=Date.now(); Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45}); Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+90})");
-    check("require('waypoints').load().length===4 && Date.now()>=beforeStaleTouch && text.indexOf('Need a fresh GPS fix')>=0");
-    send("Bangle.emit('GPS',{fix:1,lat:0,lon:0,time:new Date('2026-11-02T12:35:00Z')}); actionNow+=1000; require('Storage').write('waypoints.json','broken JSON'); Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
-    check("require('Storage').read('waypoints.json')==='broken JSON' && text.indexOf('Save failed; check Waypoints')>=0");
-    send("require('Storage').writeJSON('waypoints.json',[]); actionNow+=1000; global.realIsLocked=Bangle.isLocked; Bangle.isLocked=function(){return true}");
-    send("Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
-    check("require('waypoints').load().length===0");
-    send("Bangle.isLocked=realIsLocked; g.drawString=savedDrawString; Date.now=realDateNow; require('pawlgpsact').syncTime=realSync");
+    send("actionNow+=10000; Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+65})");
+    check("text.indexOf('Need a fresh GPS fix')>=0");
+    send("g.drawString=savedDrawString; require('pawlgpsact').syncTime=realSync");
     send("Bangle.setLCDPower(false)");
     check("global['\\xff'].timers.filter(t=>t).length===baseline");
     send("Bangle.setLCDPower(true); Bangle.setUI()");
@@ -134,10 +125,22 @@ setTimeout(() => {
     send("eval(require('Storage').read('pawlgps.app.js')); Bangle.setUI()");
     advance(1500);
     check("commands.length===1 && global['\\xff'].timers.filter(t=>t).length===baseline");
+    // Exercise the real runtime in Espruino with explicit simulated GPS/UART.
+    send(`actionNow=${fixture.now}; require('Storage').writeJSON('pawlgps.agps.json',{version:1,downloaded:actionNow,data:require('Storage').read('pawlgps.test')}); require('Storage').writeJSON('pawlgps.aid.json',{lat:45,lon:9,at:actionNow,accuracy:1000}); global.mockOwners=[]; global.mockWrites=[]; global.mockGPS={isGPSOn:function(){return mockOwners.length>0},setGPSPower:function(on,id){var i=mockOwners.indexOf(id);if(on && i<0)mockOwners.push(id);if(!on && i>=0)mockOwners.splice(i,1);return mockOwners.length>0}}; global.mockAid=require('pawlgpsrun').create({Bangle:mockGPS,storage:require('Storage'),aid:require('pawlgpsaid'),serial:{write:function(d){mockWrites.push(d)}},now:Date.now,decode:atob,setTimeout:setTimeout,clearTimeout:clearTimeout}); mockGPS.setGPSPower(1,'navigation')`);
+    advance(1600);
+    for(let i=0;i<13;i++) advance(200);
+    check("mockWrites.length===10 && mockAid.status().last.state==='sent-unconfirmed' && mockOwners.length===1 && mockOwners[0]==='navigation'");
+    send("mockAid.dispose()");
+    check("global['\\xff'].timers.filter(t=>t).length===baseline");
+    // Exercise the on-watch staged import, rather than only browser mocks.
+    send("require('Storage').write('pawlgps.agps.tmp',atob(require('Storage').read('pawlgps.test'))); global.imported=require('pawlgpsrun').importCache({downloaded:Date.now(),size:require('Storage').read('pawlgps.agps.tmp').length,crc:require('pawlgpsaid').crc32(require('Storage').read('pawlgps.agps.tmp'))})");
+    check("imported.cache==='valid' && imported.satellites===8 && require('Storage').read('pawlgps.agps.tmp')===undefined");
+    send("Bangle.pawlgpsAid.dispose(); Date.now=realDateNow");
+    check("global['\\xff'].timers.filter(t=>t).length===baseline");
     const icon=fs.readFileSync(path.join(root,'icon.js'),'utf8');
     send(`g.clear(); g.setColor(0,0,0).drawImage(${icon},64,64)`);
     screenshot(path.join(dir,'pawlgps-icon.png'));
-    console.log('Emulator checks passed: all pages, shared Waypoints, UTC clock, invalid actions, sleep/wake, cleanup, Extra NMEA, settings and icon.');
+    console.log('Emulator checks passed: CASIC codec, cache import, paced runtime replay, app actions, UTC clock, sleep/wake, cleanup, settings and icon.');
   } catch(error) { console.error(error); process.exitCode=1; }
   finally { context.jsStopIdle(); }
 },0);

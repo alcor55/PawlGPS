@@ -5,29 +5,20 @@ const create=require('../gps.js').create;
 function sample(overrides={}) {
   return {fixAt:1000,fix:{fix:1,lat:0,lon:0,alt:123.4,time:new Date('2026-11-02T12:34:56Z'),...overrides}};
 }
-test('appends standard Waypoints, preserves existing entries and avoids name collisions',()=>{
-  let list=[{name:'NONE'},{name:'PG001',lat:1,lon:2},{name:'Home',lat:3,lon:4,notes:'keep'}];
-  const old=JSON.parse(JSON.stringify(list));
-  const library={load:()=>JSON.parse(JSON.stringify(list)),save:value=>{list=value;}};
-  assert.equal(actions.saveFix(sample(),1500,library),'PG002');
-  assert.deepEqual(list.slice(0,3),old);
-  assert.deepEqual(list[3],{name:'PG002',lat:0,lon:0,alt:123.4,time:'2026-11-02T12:34:56.000Z'});
-  assert.equal(actions.saveFix(sample({alt:NaN,time:undefined}),2000,library),'PG003');
-  assert.deepEqual(list[4],{name:'PG003',lat:0,lon:0});
+test('saves acquisition aid with real GPS epoch, never writes Waypoints',()=>{
+  const writes=[];
+  const storage={writeJSON:(name,value)=>writes.push({name,value})};
+  actions.saveAid(sample(),1500,storage);
+  assert.deepEqual(writes,[{name:'pawlgps.aid.json',value:{lat:0,lon:0,at:Date.parse('2026-11-02T12:34:56Z'),source:'gps',accuracy:1000}}]);
 });
-test('invalid, stale and future-dated fixes cannot write shared data',()=>{
-  const library={load:()=>{throw new Error('Must not access storage');}};
-  for(const f of [{fix:0},{lat:NaN},{lon:Infinity},{lat:91},{lon:-181},{lat:'0'}]) {
-    assert.throws(()=>actions.saveFix(sample(f),2000,library),/fresh GPS/);
+test('invalid, stale, future-dated and undated fixes cannot save acquisition aid',()=>{
+  const storage={writeJSON:()=>assert.fail('Must not write')};
+  for(const f of [{fix:0},{lat:NaN},{lon:Infinity},{lat:91},{lon:-181},{lat:'0'},{time:undefined}]) {
+    assert.throws(()=>actions.saveAid(sample(f),2000,storage),/GPS fix/);
   }
-  for(const now of [6000,999]) assert.throws(()=>actions.saveFix(sample(),now,library),/fresh GPS/);
-});
-test('malformed shared data and storage failures are not replaced with a new list',()=>{
-  let writes=0;
-  assert.throws(()=>actions.saveFix(sample(),2000,{load:()=>({}),save:()=>writes++}),/Invalid waypoint/);
-  assert.throws(()=>actions.saveFix(sample(),2000,{load:()=>{throw new Error('Corrupt JSON');},save:()=>writes++}),/Corrupt JSON/);
-  assert.equal(writes,0);
-  assert.throws(()=>actions.saveFix(sample(),2000,{load:()=>[],save:()=>{throw new Error('Full');}}),/Full/);
+  for(const now of [6000,999]) assert.throws(()=>actions.saveAid(sample(),now,storage),/GPS fix/);
+  assert.throws(()=>actions.saveAid(sample(),2000,{writeJSON:()=>{throw new Error('Full');}}),/Full/);
+  assert.throws(()=>actions.saveAid(sample(),2000,{writeJSON:()=>false}),/Unable to save/);
 });
 test('GPS UTC sets epoch seconds, including elapsed reception time',()=>{
   let result;

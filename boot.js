@@ -1,0 +1,3 @@
+(function() {
+  require("pawlgpsrun").install();
+})();

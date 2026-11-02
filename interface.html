@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="it">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="../../css/spectre.min.css"><title>Pawl GPS · A-GPS</title></head>
+<body><main class="container" style="max-width:42rem;padding:1rem">
+  <h3>Pawl GPS · Assistenza GPS</h3>
+  <p>Scarica i dati satellitari dalla stessa sorgente di Assisted GPS Updater e
+  conserva una copia sull'orologio per riutilizzarla finché è valida. Serve Internet nel browser.</p>
+  <label class="form-checkbox"><input id="location" type="checkbox" checked><i class="form-icon"></i>
+    Richiedi anche la posizione approssimativa del browser</label>
+  <p>Il consenso alla posizione è facoltativo. Puoi salvare un aiuto iniziale anche dal GPS dell'orologio.</p>
+  <button id="update" class="btn btn-primary" disabled>Aggiorna e invia A-GPS</button>
+  <button id="refresh" class="btn" disabled>Leggi stato</button>
+  <p id="message" role="status" aria-live="polite">Collega un Bangle.js 2 con Pawl GPS 0.03 o successivo.</p>
+  <pre id="status" style="white-space:pre-wrap"></pre>
+  <p>I dati scaduti non vengono riutilizzati. «Inviato, non confermato» indica
+  la trasmissione al ricevitore, senza conferma di accettazione o garanzia sui tempi di aggancio.</p>
+  <p><a href="https://github.com/espruino/BangleApps/tree/master/apps/assistedgps" target="_blank" rel="noopener">Updater ufficiale</a> ·
+    <a href="https://www.espruino.com/agps/casic.base64">Sorgente dati CASIC</a></p>
+</main>
+<script src="../../core/lib/interface.js"></script>
+<script src="assist.js"></script>
+<script src="interface-client.js"></script>
+</body></html>

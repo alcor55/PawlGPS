@@ -2,7 +2,7 @@
   "id": "pawlgps",
   "name": "Pawl GPS",
   "shortName": "Pawl GPS",
-  "version": "0.02",
+  "version": "0.03",
   "author": "alcor55",
   "description": "Internal GPS diagnostics, satellite skyplot and raw NMEA viewer",
   "icon": "app-icon.png",
@@ -10,14 +10,17 @@
   "supports": ["BANGLEJS2"],
   "readme": "README.md",
   "allow_emulator": true,
-  "dependencies": {"waypoints":"app"},
+  "interface": "interface.html",
   "storage": [
     {"name":"pawlgps.app.js","url":"app.js"},
     {"name":"pawlgps","url":"gps.js"},
     {"name":"pawlgpsact","url":"actions.js"},
+    {"name":"pawlgpsaid","url":"assist.js"},
+    {"name":"pawlgpsrun","url":"runtime.js"},
+    {"name":"pawlgps.boot.js","url":"boot.js"},
     {"name":"pawlgps.settings.js","url":"settings.js"},
     {"name":"pawlgps.img","url":"icon.js","evaluate":true}
   ],
-  "data": [{"name":"pawlgps.json"}],
+  "data": [{"name":"pawlgps.json"},{"name":"pawlgps.aid.json"},{"name":"pawlgps.agps.json"},{"name":"pawlgps.agps.tmp"}],
   "screenshots": [{"url":"screenshots/skyplot.png"},{"url":"screenshots/fix.png"},{"url":"screenshots/actions.png"}]
 }
