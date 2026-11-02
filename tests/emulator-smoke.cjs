@@ -70,8 +70,10 @@ setTimeout(() => {
     console.log('Firmware:', value('process.version'));
     const metadata = JSON.parse(fs.readFileSync(path.join(root, 'metadata.json'), 'utf8'));
     for (const file of metadata.storage.filter(f => !f.evaluate)) upload(file.name, fs.readFileSync(path.join(root, file.url), 'utf8'));
+    const appsDir=process.env.BANGLEAPPS_DIR || path.join(root,'..','BangleApps');
+    upload('waypoints',fs.readFileSync(path.join(appsDir,'apps/waypoints/lib.js'),'utf8'));
     send("global.calls=[]; global.nativePower=Bangle.setGPSPower; Bangle.setGPSPower=function(on,id){calls.push([on,id]); return nativePower.call(Bangle,on,id)}; global.baseline=global['\\xff'].timers.filter(t=>t).length");
-    send("Bangle.setGPSPower(1,'other'); eval(require('Storage').read('pawlgps.app.js')); Bangle.setLocked(false)");
+    send("global.realDateNow=Date.now; global.actionNow=Date.now(); Date.now=function(){return actionNow}; Bangle.setGPSPower(1,'other'); eval(require('Storage').read('pawlgps.app.js')); Bangle.setLocked(false)");
     send("Bangle.emit('GPS',{fix:1,lat:45.4642,lon:9.19,alt:122.4,speed:3.6,course:135,time:new Date('2026-11-02T12:34:56Z'),satellites:5,hdop:0.9})");
     function emit(body) {
       let checksum=0; for(const c of body) checksum^=c.charCodeAt(0);
@@ -89,6 +91,30 @@ setTimeout(() => {
     send("Bangle.emit('swipe',-1,0); Bangle.emit('swipe',-1,0)"); screenshot(path.join(dir,'pawlgps-receiver.png'));
     send("Bangle.emit('swipe',1,0); Bangle.emit('swipe',1,0)");
     for(let i=0;i<5;i++) { send("Bangle.emit('swipe',-1,0); Bangle.emit('swipe',0,-1); Bangle.emit('swipe',0,1)"); }
+    screenshot(path.join(root,'screenshots/actions.png'));
+    // Use the actual shared Waypoints module to verify interoperability.
+    // jsIdle reanchors the emulator RTC to host time. Model persistent clock
+    // jumps via Date.now to test the app without creating an interval storm.
+    send("require('Storage').writeJSON('waypoints.json',[{name:'NONE'},{name:'Home',lat:1,lon:2}]); global.realSync=require('pawlgpsact').syncTime; global.clockArgs=[]; require('pawlgpsact').syncTime=function(state,now){return realSync(state,now,function(t){clockArgs.push(t);actionNow=t*1000})}; global.savedDrawString=g.drawString; global.text=[]; g.drawString=function(t){text.push(t);if(text.length>100)text.shift();return savedDrawString.apply(g,arguments)}");
+    send("Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
+    check("require('waypoints').load()[2].name==='PG001' && require('waypoints').load()[1].name==='Home'");
+    // An immediate second tap must not create another waypoint.
+    send("Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
+    check("require('waypoints').load().length===3");
+    send("actionNow+=1000; global.beforeGPSSet=Date.now(); Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+90})");
+    check("clockArgs.length===1 && text.indexOf('GPS date/time applied')>=0 && text.indexOf('Fresh GPS fix')>=0");
+    check("Math.abs(Date.now()-Date.parse('2026-11-02T12:34:57Z'))<1000");
+    send("actionNow+=1000; Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
+    check("require('waypoints').load()[3].name==='PG002'");
+    // Stale fixes, lock and malformed shared storage must never write a point.
+    send("actionNow+=10000; global.beforeStaleTouch=Date.now(); Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45}); Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+90})");
+    check("require('waypoints').load().length===4 && Date.now()>=beforeStaleTouch && text.indexOf('Need a fresh GPS fix')>=0");
+    send("Bangle.emit('GPS',{fix:1,lat:0,lon:0,time:new Date('2026-11-02T12:35:00Z')}); actionNow+=1000; require('Storage').write('waypoints.json','broken JSON'); Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
+    check("require('Storage').read('waypoints.json')==='broken JSON' && text.indexOf('Save failed; check Waypoints')>=0");
+    send("require('Storage').writeJSON('waypoints.json',[]); actionNow+=1000; global.realIsLocked=Bangle.isLocked; Bangle.isLocked=function(){return true}");
+    send("Bangle.emit('touch',1,{x:88,y:Bangle.appRect.y+45})");
+    check("require('waypoints').load().length===0");
+    send("Bangle.isLocked=realIsLocked; g.drawString=savedDrawString; Date.now=realDateNow; require('pawlgpsact').syncTime=realSync");
     send("Bangle.setLCDPower(false)");
     check("global['\\xff'].timers.filter(t=>t).length===baseline");
     send("Bangle.setLCDPower(true); Bangle.setUI()");
@@ -111,7 +137,7 @@ setTimeout(() => {
     const icon=fs.readFileSync(path.join(root,'icon.js'),'utf8');
     send(`g.clear(); g.setColor(0,0,0).drawImage(${icon},64,64)`);
     screenshot(path.join(dir,'pawlgps-icon.png'));
-    console.log('Emulator checks passed: all pages, sleep/wake, cleanup, GPS ownership calls, Extra NMEA, settings and icon.');
+    console.log('Emulator checks passed: all pages, shared Waypoints, UTC clock, invalid actions, sleep/wake, cleanup, Extra NMEA, settings and icon.');
   } catch(error) { console.error(error); process.exitCode=1; }
   finally { context.jsStopIdle(); }
 },0);

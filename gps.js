@@ -38,6 +38,15 @@ exports.create = function(now) {
     s.fix = fix; s.fixAt = now();
     if (fix.fix && s.ttff === undefined) s.ttff = (now()-s.started)/1000;
   };
+  s.shiftTime = function(delta) {
+    // setTime changes Date.now/getTime. Keep data ages unchanged across the jump.
+    if(s.fixAt) s.fixAt+=delta;
+    s.started+=delta;
+    [s.groups,s.used,s.fields].forEach(function(map) {
+      Object.keys(map).forEach(function(k) { map[k].at+=delta; });
+    });
+    s.raw.forEach(function(r) { r.at+=delta; });
+  };
   s.feed = function(line, loss) {
     if (loss) s.lost++;
     if (typeof line !== "string") return;

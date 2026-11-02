@@ -1,8 +1,9 @@
 (function() {
   var storage=require("Storage"), settings=storage.readJSON("pawlgps.json",1)||{};
   var refresh=[1,2,5].indexOf(settings.refresh)>=0 ? settings.refresh : 1;
-  var state=require("pawlgps").create(), page=0, offset=0, timer, configTimer, removed=false;
-  var titles=["Fix","Navigation","Accuracy","Skyplot","Satellites","Receiver","NMEA","GPS fields"];
+  var state=require("pawlgps").create(), actions=require("pawlgpsact");
+  var page=0, offset=0, timer, configTimer, removed=false, lastTouch=0, feedback="";
+  var titles=["Fix","Navigation","Accuracy","Skyplot","Satellites","Receiver","NMEA","GPS fields","Actions"];
   var start=Date.now();
   function fmt(v,n) { return typeof v === "number" && isFinite(v) ? v.toFixed(n===undefined?1:n) : "--"; }
   function val(v) { return v === undefined || v === "" ? "--" : String(v); }
@@ -41,12 +42,50 @@
     });
     if(!sats.length) g.setColor(g.theme.fg).setFontAlign(0,0).drawString("Waiting for GSV",cx,cy);
   }
+  function actionButtons(r) {
+    var h=Math.min(32,Math.floor((r.h-72)/2)), top=r.y+32;
+    return [{x:r.x+5,y:top,x2:r.x2-5,y2:top+h,label:"Save fix"},
+      {x:r.x+5,y:top+h+7,x2:r.x2-5,y2:top+2*h+7,label:"Set GPS time"}];
+  }
+  function drawActions(r) {
+    var now=Date.now(), ready=actions.validFix(state,now);
+    g.setFont("6x8").setFontAlign(0,-1).drawString(ready?"Fresh GPS fix":"Waiting for valid fix",(r.x+r.x2)/2,r.y+20);
+    actionButtons(r).forEach(function(b,i) {
+      var active=i===0?ready:actions.validTime(state,now);
+      g.setColor(active?g.theme.fg:g.theme.fg2).drawRect(b.x,b.y,b.x2,b.y2)
+        .setFont("6x8",2).setFontAlign(0,0).drawString(b.label,(b.x+b.x2)/2,(b.y+b.y2)/2);
+    });
+    g.setColor(g.theme.fg).setFont("6x8").setFontAlign(0,-1);
+    g.drawString(feedback,(r.x+r.x2)/2,r.y2-23);
+  }
+  function onTouch(_,e) {
+    if(page!==8 || removed || Bangle.isLocked() || !Bangle.isLCDOn() || !e) return;
+    var now=Date.now();
+    if(now-lastTouch>=0 && now-lastTouch<750) return;
+    var buttons=actionButtons(Bangle.appRect), selected=-1;
+    buttons.forEach(function(b,i) { if(e.x>=b.x && e.x<=b.x2 && e.y>=b.y && e.y<=b.y2) selected=i; });
+    if(selected<0) return;
+    try {
+      if(selected===0) feedback="Saved "+actions.saveFix(state,now,require("waypoints"));
+      else {
+        actions.syncTime(state,now,setTime);
+        var delta=Date.now()-now;
+        state.shiftTime(delta); start+=delta;
+        feedback="GPS date/time applied";
+      }
+    } catch(error) {
+      feedback=!actions.validFix(state,Date.now())?"Need a fresh GPS fix":
+        selected===1?"GPS UTC not available":"Save failed; check Waypoints";
+    }
+    lastTouch=Date.now();
+    draw();
+  }
   function draw() {
     if(removed || !Bangle.isLCDOn()) return;
     var r=Bangle.appRect, f=state.fix, sats=state.satellites(), fresh=state.fixAt && Date.now()-state.fixAt<5000;
     g.reset().clearRect(r).setColor(g.theme.fg).setFont("6x8",2).setFontAlign(-1,-1);
     g.drawString(titles[page],r.x+3,r.y+1);
-    g.setFont("6x8",1).setFontAlign(1,-1).drawString((page+1)+"/8",r.x2-2,r.y+4);
+    g.setFont("6x8",1).setFontAlign(1,-1).drawString((page+1)+"/"+titles.length,r.x2-2,r.y+4);
     g.setClipRect(r.x,r.y+18,r.x2,r.y2-15);
     var items=[], pages=1;
     if(page===0) {
@@ -75,13 +114,13 @@
     } else if(page===6) {
       state.raw.forEach(function(raw) { items.push([raw.key,age(raw.at)]); items=items.concat(wrap(raw.line,27)); });
       if(!items.length) items=[["Waiting for NMEA",""]];
-    } else {
+    } else if(page===7) {
       Object.keys(f).sort().forEach(function(k) { items=items.concat(wrap(k+": "+String(f[k]),27)); });
       if(!items.length) items=[["Waiting for GPS",""]];
-    }
-    if(page!==3) pages=rows(items,r);
+    } else drawActions(r);
+    if(page!==3 && page!==8) pages=rows(items,r);
     g.setClipRect(0,0,g.getWidth()-1,g.getHeight()-1).setColor(g.theme.fg).setFont("6x8").setFontAlign(0,1);
-    var footer=page===3 ? "N up | green:used o:no C/N0" : "< page >   ^ "+(offset+1)+"/"+pages+" v";
+    var footer=page===3 ? "N up | green:used o:no C/N0" : page===8 ? "< page >   Tap an action" : "< page >   ^ "+(offset+1)+"/"+pages+" v";
     g.drawString(footer,(r.x+r.x2)/2,r.y2-1);
   }
   function onGPS(fix) { state.update(fix); }
@@ -99,9 +138,9 @@
     Bangle.removeListener("lcdPower",onLCD); E.removeListener("kill",cleanup);
     Bangle.setGPSPower(0,"pawlgps");
   }
-  Bangle.setUI({mode:"custom",back:function(){load();},remove:cleanup,redraw:draw,
+  Bangle.setUI({mode:"custom",back:function(){load();},remove:cleanup,redraw:draw,touch:onTouch,
     swipe:function(lr,ud) {
-      if(lr) { page=(page+(lr<0?1:7))%8; offset=0; }
+      if(lr) { page=(page+(lr<0?1:titles.length-1))%titles.length; offset=0; feedback=""; }
       else if(ud) offset=Math.max(0,offset+(ud<0?1:-1));
       draw();
     }});

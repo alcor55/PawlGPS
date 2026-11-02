@@ -23,7 +23,8 @@ GitHub Pages deve pubblicare `master` da `/ (root)` e includere i submodule
 dai metadata. Attendi il completamento della pubblicazione Pages, poi apri
 [il tuo App Loader](https://alcor55.github.io/BangleApps/), ricarica con
 Cmd+Shift+R, collega il Bangle.js 2 da Chrome/Edge con Web Bluetooth,
-cerca **Pawl GPS 0.01** e premi Upload. Scollega altri client Bluetooth
+cerca **Pawl GPS 0.02** e premi Upload. Il loader installerà anche **Waypoints**
+se manca. Scollega altri client Bluetooth
 prima di connetterti; prova all'aperto per ricevere i satelliti.
 
 Aggiornamenti successivi, dopo aver pubblicato una nuova versione di PawlGPS:
@@ -43,7 +44,7 @@ all'altro repository: il normale GITHUB_TOKEN del progetto non basta.
 ## Verifica
 
 ```sh
-node --test tests/gps.test.cjs
+node --test tests/*.test.cjs
 ```
 
 Il decoder mantiene al massimo 12 gruppi GSV (64 record ciascuno), 12 gruppi
@@ -61,6 +62,9 @@ Per lo smoke test nel firmware ufficiale, scarica in una cartella temporanea
 ESPRUINO_EMU_DIR=/tmp/pawl-clock-emulator node tests/emulator-smoke.cjs
 ```
 
+Il runner richiede anche una copia BangleApps in `../BangleApps` (oppure il
+percorso in `BANGLEAPPS_DIR`) per caricare il modulo Waypoints ufficiale.
+
 Verificato con Espruino **2v29.74**: parser, tutte le pagine, impostazioni,
 icona, spegnimento/riaccensione LCD e pulizia ripetuta di timer/listener.
 Eseguito anche `bin/sanitycheck.js` nella copia temporanea ufficiale BangleApps:
@@ -69,6 +73,28 @@ Il test traccia le richieste GPS per app ID; il GPS fisico non è emulato.
 Gli screenshot nella cartella `screenshots` usano dati simulati.
 Acquisizione, risposta Extra NMEA, autonomia e ricezione richiedono una prova
 sul dispositivo. Rigenera l'icona con `python3 tools/make-icon.py` (Pillow).
+
+## Punti condivisi e orologio
+
+La pagina Actions usa `require("waypoints").load()/save()` e aggiunge oggetti
+`{name,lat,lon,alt?,time?}` al file condiviso `waypoints.json`.
+`name`, `lat` e `lon` sono il formato comune BangleApps; `alt` (metri) e `time`
+(ISO UTC) sono campi aggiuntivi che altre app possono ignorare o rimuovere
+quando modificano il punto. I nomi `PG001`, `PG002`… sono scelti evitando
+collisioni. I punti esistenti vengono mantenuti, anche quelli creati da altre
+app. Un file JSON danneggiato non viene sostituito con una lista vuota.
+Il file condiviso appartiene a Waypoints, quindi non è dichiarato tra i dati
+di PawlGPS e non viene eliminato disinstallando PawlGPS.
+
+`setTime` riceve secondi epoch UTC, compensando il tempo dalla ricezione
+dell'evento GPS. Non vengono cambiati timezone, DST o impostazioni persistenti.
+Il salto dell'orologio sposta della stessa quantità i timestamp interni di
+PawlGPS, mantenendo corrette scadenze di fix/NMEA e durata della sessione.
+I test verificano scrittura interoperabile, nomi univoci, dati non validi o
+obsoleti, errori storage, sincronizzazione UTC e salti avanti/indietro.
+Per i salti dell'orologio il runner modella `Date.now` e la chiamata di
+sincronizzazione: l'emulatore riallinea l'RTC all'host ad ogni ciclo. La prova
+dell'impostazione effettiva dell'RTC va quindi eseguita sul dispositivo.
 
 ## Regole seguite
 

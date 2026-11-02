@@ -1,10 +1,19 @@
 # Pawl GPS · Bangle.js 2
 
-Otto pagine: fix/coordinate/quota, velocità/rotta/UTC, precisione e DOP,
+Nove pagine: fix/coordinate/quota, velocità/rotta/UTC, precisione e DOP,
 skyplot con nord in alto, satelliti (elevazione, azimut, C/N0), ricevitore,
-NMEA grezzi e tutti i campi dell'evento GPS. Swipe orizzontale: cambia pagina;
+NMEA grezzi, tutti i campi dell'evento GPS e **Actions**. Swipe orizzontale: cambia pagina;
 verticale: scorri i dati; pulsante: esci. Skyplot: verde = usato nel fix,
 cerchio vuoto = segnale non disponibile. Non è orientato dalla bussola.
+
+**Actions:** tocca **Save fix** per aggiungere `PG001`, `PG002`… ai punti
+condivisi di [Waypoints](https://github.com/espruino/BangleApps/tree/master/apps/waypoints),
+utilizzabili ad esempio da GPS Navigation e Waypointer. Conserva i punti
+esistenti; quota e ora UTC vengono incluse se disponibili. Tocca **Set GPS time**
+per impostare data e ora dell'orologio dal GPS, mantenendo fuso orario e ora
+legale configurati. Entrambe le azioni richiedono un fix valido da meno di 5 s;
+la seconda richiede anche data/ora UTC valide. Waypoints viene installato
+automaticamente dal loader come dipendenza e permette di gestire i punti.
 
 **Impostazioni → App/Widget Settings → Pawl GPS:** aggiornamento 1/2/5 s,
 etichette skyplot, **Extra NMEA** (predefinito spento). Riavvia l'app dopo le

@@ -1,1 +1,2 @@
 0.01: Initial release with GPS diagnostics, NMEA viewer and satellite skyplot.
+0.02: Add Actions page to save shared Waypoints and set system date/time from GPS UTC.
